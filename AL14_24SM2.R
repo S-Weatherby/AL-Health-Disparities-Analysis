@@ -1524,3 +1524,122 @@ poverty_trend <- lm(avg_poverty_black_white_gap ~ year, data = trend_data)
 
 summary(lbw_trend)
 summary(poverty_trend)
+
+##expanding on racial trends
+# Create streamlined comprehensive race trends table (2017-2024)
+comprehensive_race_trends <- AL14_24SM2 %>%
+  filter(year >= 2017) %>%
+  select(year, county, 
+         # All racial breakdowns for LBW
+         pct_lbw_aian, pct_lbw_asian, pct_lbw_black, pct_lbw_white, 
+         pct_lbw_hispanic, pct_lbw_biracial, pct_lbw_nhopi,
+         # All racial breakdowns for Child Poverty
+         pct_child_poverty_aian, pct_child_poverty_asian, pct_child_poverty_black, 
+         pct_child_poverty_white, pct_child_poverty_hispanic,
+         # All racial breakdowns for TBR
+         tbr_aian, tbr_asian, tbr_black, tbr_white, tbr_hispanic, tbr_biracial, tbr_nhopi) %>%
+  
+  pivot_longer(
+    cols = starts_with("pct_lbw_"),
+    names_to = "race_group",
+    values_to = "pct_lbw",
+    names_prefix = "pct_lbw_"
+  ) %>%
+  
+  left_join(
+    AL14_24SM2 %>%
+      filter(year >= 2017) %>%
+      select(year, county, starts_with("pct_child_poverty_")) %>%
+      pivot_longer(
+        cols = starts_with("pct_child_poverty_"),
+        names_to = "race_group",
+        values_to = "pct_cip",
+        names_prefix = "pct_child_poverty_"
+      ),
+    by = c("year", "county", "race_group")
+  ) %>%
+  
+  left_join(
+    AL14_24SM2 %>%
+      filter(year >= 2017) %>%
+      select(year, county, starts_with("tbr_")) %>%
+      pivot_longer(
+        cols = starts_with("tbr_"),
+        names_to = "race_group",
+        values_to = "tbr_rate",
+        names_prefix = "tbr_"
+      ),
+    by = c("year", "county", "race_group")
+  ) %>%
+  
+  mutate(
+    race = case_when(
+      race_group == "aian" ~ "American Indian/Alaska Native",
+      race_group == "asian" ~ "Asian",
+      race_group == "black" ~ "Black", 
+      race_group == "white" ~ "White",
+      race_group == "hispanic" ~ "Hispanic",
+      race_group == "biracial" ~ "Two or More Races",
+      race_group == "nhopi" ~ "Native Hawaiian/Pacific Islander",
+      TRUE ~ str_to_title(race_group)
+    ),
+    
+    time_period = case_when(
+      year %in% 2017:2019 ~ "Early Period (2017-2019): Basic Racial Data",
+      year %in% 2020:2023 ~ "Expanded Period (2020-2023): Full Racial Data",
+      year >= 2024 ~ "Recent (2024+): Enhanced Racial Data"
+    ),
+    
+    # CONVERT TO DECIMALS - This is what Tableau expects for percentage formatting
+    pct_lbw = as.numeric(as.character(pct_lbw)) / 100,
+    pct_cip = as.numeric(as.character(pct_cip)) / 100,
+    # Keep TBR as whole number (it's rate per 1,000, not percentage)
+    tbr_rate = as.numeric(as.character(tbr_rate)),
+    
+    # Data availability flags
+    has_lbw_data = !is.na(pct_lbw),
+    has_cip_data = !is.na(pct_cip),
+    has_tbr_data = !is.na(tbr_rate),
+    
+    race_data_start_year = case_when(
+      race %in% c("Black", "White", "Hispanic") ~ 2017,
+      race %in% c("American Indian/Alaska Native", "Asian") ~ 2020,
+      race == "Two or More Races" ~ 2024,
+      race == "Native Hawaiian/Pacific Islander" ~ 2024,
+      TRUE ~ 2017
+    )
+  ) %>%
+  
+  select(year, county, race, pct_lbw, tbr_rate, pct_cip, time_period, 
+         has_lbw_data, has_cip_data, has_tbr_data, race_data_start_year)
+
+# Export for Tableau
+write_csv(comprehensive_race_trends, "AL14_24SM2_Comprehensive_Race_Trends.csv", na = "")
+
+# Verify the conversion
+print("Sample values after conversion:")
+comprehensive_race_trends %>%
+  filter(county == "State Total", year == 2021, race == "Black") %>%
+  select(pct_lbw, pct_cip, tbr_rate)
+
+# Check the structure
+print("Final dataset structure:")
+head(comprehensive_race_trends, 10)
+
+# Verify data types (should be numeric for measures)
+print("Data types for measures:")
+sapply(comprehensive_race_trends[c("pct_lbw", "tbr_rate", "pct_cip")], class)
+
+# Show data availability by race
+print("Data availability by race:")
+comprehensive_race_trends %>%
+  group_by(race, race_data_start_year) %>%
+  summarise(
+    years_with_lbw = sum(has_lbw_data, na.rm = TRUE),
+    years_with_cip = sum(has_cip_data, na.rm = TRUE),
+    years_with_tbr = sum(has_tbr_data, na.rm = TRUE),
+    .groups = 'drop'
+  )
+
+
+
