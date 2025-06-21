@@ -1642,4 +1642,385 @@ comprehensive_race_trends %>%
   )
 
 
+##adding missing TBR analysis
+# Enhanced County Disparities Analysis - Adding Teen Birth Rate Analysis
+# Insert this code after your existing county disparities section
+
+###County level TBR Analysis (2021-2023)
+# County-level racial disparities for 2021-2023 INCLUDING TBR
+county_demo_enhanced <- AL14_24SM2 %>%
+  filter(
+    year %in% c(2021, 2022, 2023),
+    county != "State Total"
+  ) %>%
+  select(year, county, 
+         # Low Birth Weight
+         pct_lbw_black, pct_lbw_white, 
+         # Teen Birth Rate - ADD THIS
+         tbr_black, tbr_white,
+         # Child Poverty
+         pct_child_poverty_black, pct_child_poverty_white)
+
+# Check which counties have complete TBR data
+county_demo_enhanced %>%
+  group_by(county) %>%
+  summarise(
+    complete_years_lbw = sum(!is.na(pct_lbw_black) & !is.na(pct_lbw_white)),
+    complete_years_tbr = sum(!is.na(tbr_black) & !is.na(tbr_white)),
+    complete_years_poverty = sum(!is.na(pct_child_poverty_black) & !is.na(pct_child_poverty_white))
+  ) %>%
+  arrange(desc(complete_years_tbr))
+
+# Enhanced county disparities with TBR
+county_disparities_enhanced <- AL14_24SM2 %>%
+  filter(
+    year %in% c(2021, 2022, 2023),
+    county != "State Total"
+  ) %>%
+  select(year, county, 
+         pct_lbw_black, pct_lbw_white, 
+         tbr_black, tbr_white,  # ADD TBR variables
+         pct_child_poverty_black, pct_child_poverty_white) %>%
+  # Calculate racial gaps INCLUDING TBR
+  mutate(
+    lbw_gap = pct_lbw_black - pct_lbw_white,
+    tbr_gap = tbr_black - tbr_white,  # ADD TBR gap calculation
+    poverty_gap = pct_child_poverty_black - pct_child_poverty_white
+  ) %>%
+  # Remove counties with insufficient data
+  filter(!is.na(lbw_gap) | !is.na(tbr_gap) | !is.na(poverty_gap))
+
+# Look at the largest TBR disparities
+print("Counties with Largest Teen Birth Rate Disparities (Black-White):")
+county_disparities_enhanced %>%
+  group_by(county) %>%
+  summarise(
+    avg_lbw_gap = mean(lbw_gap, na.rm = TRUE),
+    avg_tbr_gap = mean(tbr_gap, na.rm = TRUE),
+    avg_poverty_gap = mean(poverty_gap, na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  arrange(desc(avg_tbr_gap)) %>%
+  head(10)
+
+# Look at counties with SMALLEST TBR gaps (most equitable)
+print("Counties with Smallest Teen Birth Rate Disparities (Most Equitable):")
+county_disparities_enhanced %>%
+  group_by(county) %>%
+  summarise(
+    avg_lbw_gap = mean(lbw_gap, na.rm = TRUE),
+    avg_tbr_gap = mean(tbr_gap, na.rm = TRUE),
+    avg_poverty_gap = mean(poverty_gap, na.rm = TRUE),
+    .groups = 'drop'
+  ) %>%
+  arrange(avg_tbr_gap) %>%
+  head(10)
+
+# Compare to state-level TBR gaps
+state_gaps_enhanced <- AL14_24SM2 %>%
+  filter(year %in% c(2021, 2022, 2023), county == "State Total") %>%
+  summarise(
+    state_lbw_gap = mean(pct_lbw_black - pct_lbw_white, na.rm = TRUE),
+    state_tbr_gap = mean(tbr_black - tbr_white, na.rm = TRUE),  # ADD state TBR gap
+    state_poverty_gap = mean(pct_child_poverty_black - pct_child_poverty_white, na.rm = TRUE)
+  )
+
+print("State-Level Gaps (2021-2023):")
+print(state_gaps_enhanced)
+
+# Examine actual TBR values for top disparity counties
+print("TBR Values for Counties with Largest Disparities:")
+county_disparities_enhanced %>%
+  filter(county %in% c("Lamar", "Wilcox", "Tallapoosa")) %>%
+  select(year, county, tbr_black, tbr_white, tbr_gap) %>%
+  arrange(county, year)
+
+# Create enhanced year-filterable disparity data for Tableau WITH TBR
+tableau_disparities_enhanced <- county_disparities_enhanced %>%
+  select(year, county, lbw_gap, tbr_gap, poverty_gap) %>%  # ADD tbr_gap
+  mutate(
+    year_filter = as.character(year),
+    lbw_gap_category = case_when(
+      lbw_gap >= 10 ~ "High Disparity (10+ points)",
+      lbw_gap >= 5 ~ "Moderate Disparity (5-10 points)", 
+      lbw_gap >= 0 ~ "Low Disparity (0-5 points)",
+      lbw_gap < 0 ~ "Reverse Disparity",
+      TRUE ~ "No Data"
+    ),
+    # ADD TBR gap categories
+    tbr_gap_category = case_when(
+      tbr_gap >= 40 ~ "Extreme Disparity (40+ per 1000)",
+      tbr_gap >= 20 ~ "High Disparity (20-40 per 1000)",
+      tbr_gap >= 10 ~ "Moderate Disparity (10-20 per 1000)",
+      tbr_gap >= 0 ~ "Low Disparity (0-10 per 1000)",
+      tbr_gap < 0 ~ "Reverse Disparity (White > Black)",
+      TRUE ~ "No Data"
+    ),
+    poverty_gap_category = case_when(
+      poverty_gap >= 40 ~ "Extreme Disparity (40+ points)",
+      poverty_gap >= 20 ~ "High Disparity (20-40 points)",
+      poverty_gap >= 0 ~ "Moderate Disparity (0-20 points)",
+      poverty_gap < 0 ~ "Reverse Disparity (White > Black)",
+      TRUE ~ "No Data"
+    )
+  ) %>%
+  # Add "All Years" aggregate data WITH TBR
+  bind_rows(
+    county_disparities_enhanced %>%
+      group_by(county) %>%
+      summarise(
+        year = 9999,
+        year_filter = "All Years",
+        lbw_gap = mean(lbw_gap, na.rm = TRUE),
+        tbr_gap = mean(tbr_gap, na.rm = TRUE),  # ADD TBR aggregate
+        poverty_gap = mean(poverty_gap, na.rm = TRUE),
+        .groups = 'drop'
+      ) %>%
+      mutate(
+        lbw_gap_category = case_when(
+          lbw_gap >= 10 ~ "High Disparity (10+ points)",
+          lbw_gap >= 5 ~ "Moderate Disparity (5-10 points)", 
+          lbw_gap >= 0 ~ "Low Disparity (0-5 points)",
+          lbw_gap < 0 ~ "Reverse Disparity",
+          TRUE ~ "No Data"
+        ),
+        # ADD TBR categories for aggregate
+        tbr_gap_category = case_when(
+          tbr_gap >= 40 ~ "Extreme Disparity (40+ per 1000)",
+          tbr_gap >= 20 ~ "High Disparity (20-40 per 1000)",
+          tbr_gap >= 10 ~ "Moderate Disparity (10-20 per 1000)",
+          tbr_gap >= 0 ~ "Low Disparity (0-10 per 1000)",
+          tbr_gap < 0 ~ "Reverse Disparity (White > Black)",
+          TRUE ~ "No Data"
+        ),
+        poverty_gap_category = case_when(
+          poverty_gap >= 40 ~ "Extreme Disparity (40+ points)",
+          poverty_gap >= 20 ~ "High Disparity (20-40 points)",
+          poverty_gap >= 0 ~ "Moderate Disparity (0-20 points)",
+          poverty_gap < 0 ~ "Reverse Disparity (White > Black)",
+          TRUE ~ "No Data"
+        )
+      )
+  ) %>%
+  arrange(county, year)
+
+# Export enhanced data for Tableau
+write_csv(tableau_disparities_enhanced, "Alabama_County_Disparities_Enhanced_with_TBR.csv")
+
+# Verification check
+print("Enhanced dataset with TBR - Sample for Jefferson County:")
+tableau_disparities_enhanced %>%
+  filter(county == "Jefferson") %>%
+  select(year_filter, county, lbw_gap, tbr_gap, poverty_gap)
+
+###Enhanced 2018-2024 Demo analysis WITH TBR
+
+# Prepare enhanced 2018-2024 data with TBR included
+demo_2018_2024_enhanced <- AL14_24SM2 %>%
+  filter(
+    year >= 2018,
+    county != "State Total"
+  ) %>%
+  select(
+    year, county,
+    # Low Birth Weight
+    pct_lbw, pct_lbw_black, pct_lbw_white, pct_lbw_hispanic,
+    # Teen Birth Rate - ADD THESE
+    tbr, tbr_black, tbr_white, tbr_hispanic,
+    # Child Poverty
+    pct_child_poverty, pct_child_poverty_black, pct_child_poverty_white, pct_child_poverty_hispanic
+  ) %>%
+  # Calculate gaps INCLUDING TBR
+  mutate(
+    lbw_black_white_gap = pct_lbw_black - pct_lbw_white,
+    lbw_hispanic_white_gap = pct_lbw_hispanic - pct_lbw_white,
+    # ADD TBR gaps
+    tbr_black_white_gap = tbr_black - tbr_white,
+    tbr_hispanic_white_gap = tbr_hispanic - tbr_white,
+    poverty_black_white_gap = pct_child_poverty_black - pct_child_poverty_white,
+    poverty_hispanic_white_gap = pct_child_poverty_hispanic - pct_child_poverty_white
+  )
+
+# Check TBR data availability by year
+print("TBR Data Availability by Year:")
+demo_2018_2024_enhanced %>%
+  group_by(year) %>%
+  summarise(
+    counties_with_lbw_data = sum(!is.na(lbw_black_white_gap)),
+    counties_with_tbr_data = sum(!is.na(tbr_black_white_gap)),  # ADD TBR check
+    counties_with_poverty_data = sum(!is.na(poverty_black_white_gap)),
+    .groups = 'drop'
+  )
+
+# Enhanced state-level trends INCLUDING TBR
+state_trends_2018_2024_enhanced <- demo_2018_2024_enhanced %>%
+  group_by(year) %>%
+  summarise(
+    # Average gaps across counties
+    avg_lbw_black_white_gap = mean(lbw_black_white_gap, na.rm = TRUE),
+    avg_lbw_hispanic_white_gap = mean(lbw_hispanic_white_gap, na.rm = TRUE),
+    # ADD TBR gaps
+    avg_tbr_black_white_gap = mean(tbr_black_white_gap, na.rm = TRUE),
+    avg_tbr_hispanic_white_gap = mean(tbr_hispanic_white_gap, na.rm = TRUE),
+    avg_poverty_black_white_gap = mean(poverty_black_white_gap, na.rm = TRUE),
+    avg_poverty_hispanic_white_gap = mean(poverty_hispanic_white_gap, na.rm = TRUE),
+    
+    # Number of counties with data
+    counties_lbw = sum(!is.na(lbw_black_white_gap)),
+    counties_tbr = sum(!is.na(tbr_black_white_gap)),  # ADD TBR count
+    counties_poverty = sum(!is.na(poverty_black_white_gap)),
+    .groups = 'drop'
+  )
+
+print("Enhanced State Trends 2018-2024 WITH TBR:")
+print(state_trends_2018_2024_enhanced)
+
+# Export Enhanced Table: Demographic Trends (2018-2024) WITH TBR
+write_csv(state_trends_2018_2024_enhanced, "Alabama_Demo_Trends_18_24_Enhanced_TBR.csv")
+
+# Enhanced detailed demographic trends for Tableau WITH TBR
+demographic_trends_detailed_enhanced <- demo_2018_2024_enhanced %>%
+  group_by(year) %>%
+  summarise(
+    # Overall rates
+    avg_lbw = mean(pct_lbw, na.rm = TRUE),
+    avg_tbr = mean(tbr, na.rm = TRUE),  # ADD overall TBR
+    avg_child_poverty = mean(pct_child_poverty, na.rm = TRUE),
+    
+    # Black-White gaps
+    lbw_black_white_gap = mean(lbw_black_white_gap, na.rm = TRUE),
+    tbr_black_white_gap = mean(tbr_black_white_gap, na.rm = TRUE),  # ADD TBR gap
+    poverty_black_white_gap = mean(poverty_black_white_gap, na.rm = TRUE),
+    
+    # Hispanic-White gaps  
+    lbw_hispanic_white_gap = mean(lbw_hispanic_white_gap, na.rm = TRUE),
+    tbr_hispanic_white_gap = mean(tbr_hispanic_white_gap, na.rm = TRUE),  # ADD TBR Hispanic gap
+    poverty_hispanic_white_gap = mean(poverty_hispanic_white_gap, na.rm = TRUE),
+    
+    # Data availability counts
+    counties_with_lbw_data = sum(!is.na(lbw_black_white_gap)),
+    counties_with_tbr_data = sum(!is.na(tbr_black_white_gap)),  # ADD TBR availability
+    counties_with_poverty_data = sum(!is.na(poverty_black_white_gap)),
+    
+    .groups = 'drop'
+  ) %>%
+  # Convert percentages to decimals for Tableau (TBR stays as rate per 1000)
+  mutate(
+    lbw_black_white_gap = lbw_black_white_gap / 100,
+    poverty_black_white_gap = poverty_black_white_gap / 100,
+    lbw_hispanic_white_gap = lbw_hispanic_white_gap / 100,
+    poverty_hispanic_white_gap = poverty_hispanic_white_gap / 100,
+    avg_lbw = avg_lbw / 100,
+    avg_child_poverty = avg_child_poverty / 100
+    # Note: TBR rates stay as-is (per 1000 births, not percentages)
+  )
+
+# Export the enhanced detailed version
+write_csv(demographic_trends_detailed_enhanced, "AL_Demo_Trends_18_24_Enhanced_TBR_Tableau.csv")
+
+#TBR trends for major counties
+print("TBR Trends for Major Counties:")
+major_counties <- c("Jefferson", "Mobile", "Madison", "Montgomery", "Tuscaloosa")
+
+demo_2018_2024_enhanced %>%
+  filter(county %in% major_counties) %>%
+  select(year, county, tbr_black_white_gap, tbr_hispanic_white_gap, poverty_black_white_gap, lbw_black_white_gap) %>%
+  arrange(county, year)
+
+###Enhanced ANOVA testing WITH TBR
+
+# Enhanced reshape data for ANOVA INCLUDING TBR
+anova_data_enhanced <- demo_2018_2024_enhanced %>%
+  filter(!is.na(pct_lbw_black), !is.na(pct_lbw_white), !is.na(pct_lbw_hispanic),
+         !is.na(tbr_black), !is.na(tbr_white), !is.na(tbr_hispanic)) %>%  # ADD TBR filters
+  select(year, county, 
+         pct_lbw_black, pct_lbw_white, pct_lbw_hispanic,
+         tbr_black, tbr_white, tbr_hispanic,  # ADD TBR variables
+         pct_child_poverty_black, pct_child_poverty_white, pct_child_poverty_hispanic) %>%
+  # Convert to long format
+  pivot_longer(
+    cols = c(pct_lbw_black, pct_lbw_white, pct_lbw_hispanic),
+    names_to = "race_lbw", 
+    values_to = "lbw_rate",
+    names_prefix = "pct_lbw_"
+  ) %>%
+  # ADD TBR pivot
+  pivot_longer(
+    cols = c(tbr_black, tbr_white, tbr_hispanic),
+    names_to = "race_tbr",
+    values_to = "tbr_rate",
+    names_prefix = "tbr_"
+  ) %>%
+  pivot_longer(
+    cols = c(pct_child_poverty_black, pct_child_poverty_white, pct_child_poverty_hispanic),
+    names_to = "race_poverty",
+    values_to = "poverty_rate", 
+    names_prefix = "pct_child_poverty_"
+  ) %>%
+  filter(
+    str_remove(race_lbw, "pct_lbw_") == str_remove(race_poverty, "pct_child_poverty_") &
+      str_remove(race_lbw, "pct_lbw_") == str_remove(race_tbr, "tbr_")  # ADD TBR matching
+  ) %>%
+  mutate(
+    race = str_remove(race_lbw, "pct_lbw_"),
+    race = str_replace(race, "_", " ") %>% str_to_title()
+  )
+
+# Enhanced ANOVA Tests
+print("=== ENHANCED ANOVA RESULTS WITH TBR ===")
+
+# Test 1: Race differences in LBW
+lbw_anova_enhanced <- aov(lbw_rate ~ race, data = anova_data_enhanced)
+print("LBW by Race:")
+summary(lbw_anova_enhanced)
+
+# Test 2: Race differences in TBR - ADD THIS TEST
+tbr_anova <- aov(tbr_rate ~ race, data = anova_data_enhanced)
+print("Teen Birth Rate by Race:")
+summary(tbr_anova)
+
+# Test 3: Race differences in Child Poverty  
+poverty_anova_enhanced <- aov(poverty_rate ~ race, data = anova_data_enhanced)
+print("Child Poverty by Race:")
+summary(poverty_anova_enhanced)
+
+##Enhanced Tukey tests WITH TBR
+
+print("=== ENHANCED TUKEY HSD RESULTS ===")
+
+# Pairwise comparisons for LBW
+print("LBW Pairwise Comparisons:")
+TukeyHSD(lbw_anova_enhanced)
+
+# ADD: Pairwise comparisons for TBR
+print("Teen Birth Rate Pairwise Comparisons:")
+TukeyHSD(tbr_anova)
+
+# Pairwise comparisons for Child Poverty
+print("Child Poverty Pairwise Comparisons:")
+TukeyHSD(poverty_anova_enhanced)
+
+###Enhanced ANOVA time trend analysis WITH TBR
+trend_data_enhanced <- state_trends_2018_2024_enhanced %>%
+  select(year, avg_lbw_black_white_gap, avg_tbr_black_white_gap, avg_poverty_black_white_gap)  # ADD TBR
+
+# Enhanced linear regression tests
+lbw_trend_enhanced <- lm(avg_lbw_black_white_gap ~ year, data = trend_data_enhanced)
+tbr_trend <- lm(avg_tbr_black_white_gap ~ year, data = trend_data_enhanced)  # ADD TBR trend
+poverty_trend_enhanced <- lm(avg_poverty_black_white_gap ~ year, data = trend_data_enhanced)
+
+print("=== ENHANCED TREND ANALYSIS RESULTS ===")
+print("LBW Gap Trend:")
+summary(lbw_trend_enhanced)
+
+print("Teen Birth Rate Gap Trend:")  # ADD TBR results
+summary(tbr_trend)
+
+print("Child Poverty Gap Trend:")
+summary(poverty_trend_enhanced)
+
+# Print correlation between TBR trends and other measures
+print("Correlations between disparity trends:")
+cor(trend_data_enhanced[2:4], use = "complete.obs")
+
 
