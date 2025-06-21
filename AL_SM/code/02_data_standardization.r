@@ -5,9 +5,21 @@
 # Purpose: Standardize variables across all years and create unified dataset
 
 library(tidyverse)
+library(janitor)
 
-# Load cleaned individual datasets (from 01_data_cleaning.R output)
-# [Include your variable standardization code here - all the AL24SM2_, AL23SM2_, etc. sections]
+AL14SM2 <- read_csv("data/processed/AL14SM2_cleaned.csv")
+AL15SM2 <- read_csv("data/processed/AL15SM2_cleaned.csv")
+AL16SM2 <- read_csv("data/processed/AL16SM2_cleaned.csv")
+AL17SM2 <- read_csv("data/processed/AL17SM2_cleaned.csv")
+AL18SM2 <- read_csv("data/processed/AL18SM2_cleaned.csv")
+AL19SM2 <- read_csv("data/processed/AL19SM2_cleaned.csv")
+AL20SM2 <- read_csv("data/processed/AL20SM2_cleaned.csv")
+AL21SM2 <- read_csv("data/processed/AL21SM2_cleaned.csv")
+AL22SM2 <- read_csv("data/processed/AL22SM2_cleaned.csv")
+AL23SM2 <- read_csv("data/processed/AL23SM2_cleaned.csv")
+AL24SM2 <- read_csv("data/processed/AL24SM2_cleaned.csv")
+
+## creating Tables
 
 ###2024 
 AL24SM2_ <- AL24SM2 %>% 
@@ -543,23 +555,60 @@ AL14_24SM2 <- AL14_24SM2 %>%
     pct_child_poverty_white = as.numeric(pct_child_poverty_white)
   )
 
-# Combine all standardized datasets
-AL14_24SM2 <- bind_rows(
-  AL14SM2_, AL15SM2_, AL16SM2_, AL17SM2_, AL18SM2_, AL19SM2_,
-  AL20SM2_, AL21SM2_, AL22SM2_, AL23SM2_, AL24SM2_
-)
+cat("✅ Type conversions completed!\n\n")
 
-# Convert data types for proper analysis
+# Verify the conversions
+cat("=== UPDATED DATA TYPES ===\n")
+updated_types <- sapply(AL14_24SM2, class)
+print(data.frame(Column = names(updated_types), Type = updated_types, row.names = NULL))
+
+cat("1. MISSING DATA SUMMARY:\n")
+missing_summary <- AL14_24SM2 %>%
+  summarise_all(~sum(is.na(.))) %>%
+  pivot_longer(everything(), names_to = "Variable", values_to = "Missing_Count") %>%
+  mutate(Missing_Percent = round(Missing_Count / nrow(AL14_24SM2) * 100, 1)) %>%
+  arrange(desc(Missing_Count))
+
+print(head(missing_summary, 15))
+
+cat("\n2. YEAR DISTRIBUTION:\n")
+year_counts <- table(AL14_24SM2$year)
+print(year_counts)
+
+cat("\n3. COUNTY COUNT BY YEAR:\n")
+county_by_year <- AL14_24SM2 %>%
+  group_by(year) %>%
+  summarise(Counties = n_distinct(county), .groups = 'drop')
+print(county_by_year)
+
+cat("\n4. RANGE CHECKS FOR KEY VARIABLES:\n")
+range_check <- AL14_24SM2 %>%
+  summarise(
+    LBW_min = min(pct_lbw, na.rm = TRUE),
+    LBW_max = max(pct_lbw, na.rm = TRUE),
+    TBR_min = min(tbr, na.rm = TRUE),
+    TBR_max = max(tbr, na.rm = TRUE),
+    HS_min = min(pct_hs_complete, na.rm = TRUE),
+    HS_max = max(pct_hs_complete, na.rm = TRUE),
+    Poverty_min = min(pct_child_poverty, na.rm = TRUE),
+    Poverty_max = max(pct_child_poverty, na.rm = TRUE)
+  )
+print(range_check)
+
 AL14_24SM2 <- AL14_24SM2 %>%
   mutate(
-    # Convert year to numeric (for trend analysis, plotting)
-    year = as.numeric(year),
-    county = as.character(county),
+    # Create factor versions for statistical analysis
+    year_factor = factor(year),
+    county_factor = factor(county),
     
-    # [ALL YOUR TYPE CONVERSION CODE]
-  )
+    # Create racial data availability indicator
+    racial_data_available = case_when(
+      year %in% 2014:2017 ~ "None/Limited",
+      year %in% 2018:2019 ~ "Basic (3 groups)",
+      year %in% 2020:2023 ~ "Full (5 groups)",
+      year == 2024 ~ "Extended (7 groups)",
+      TRUE ~ "Unknown"
+    ))
 
-# Save the unified dataset
+# Save unified dataset
 write_csv(AL14_24SM2, "data/processed/AL14_24SM2_unified.csv")
-
-cat("✅ Data standardization complete!\n")
