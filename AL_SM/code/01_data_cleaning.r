@@ -6,18 +6,66 @@
 # Variables: County, Year, Race, Teen Birth Rate (TBR), TBR_race, Low Birth Weight (LBW), LBW_race, Children in Poverty (CIP), CIP_race, Education (Highschool/Ged and Some College)
 
 # =============================================================================
-# PACKAGE LOADING
+# COMPREHENSIVE PACKAGE LOADING LIST
+# Alabama Health Data Analysis Project
 # =============================================================================
 
-# Core tidyverse packages
-library(tidyverse)     
-library(janitor)       
-library(readxl)        
+# Core tidyverse packages (load tidyverse first to avoid conflicts)
+library(tidyverse)     # Includes dplyr, ggplot2, tidyr, readr, purrr, tibble, stringr, forcats
 
-# =============================================================================
-# DATA IMPORT AND INITIAL CLEANING
-# =============================================================================
+# Data manipulation and cleaning
+library(dplyr)         # Data manipulation (pipe operator %>%, filter, select, etc.)
+library(tidyr)         # Data reshaping (pivot_longer, pivot_wider, etc.)
+library(janitor)       # Data cleaning (make_clean_names, clean_names, etc.)
+library(stringr)       # String manipulation
+library(purrr)         # Functional programming tools
 
+# Data import/export
+library(readr)         # Reading/writing CSV files
+library(readxl)        # Reading Excel files (.xlsx, .xls)
+library(openxlsx)      # Writing Excel files with formatting
+
+# Statistical analysis
+library(corrplot)      # Correlation plot visualization
+library(cluster)       # Clustering analysis
+library(lattice)       # Statistical graphics
+
+# Advanced data manipulation
+library(dtplyr)        # Data.table backend for dplyr
+library(dbplyr)        # Database backend for dplyr
+
+# Visualization
+library(ggplot2)       # Grammar of graphics (included in tidyverse but explicit)
+library(ggforce)       # Extended ggplot2 functionality
+
+# Utility packages
+library(tibble)        # Modern data frames (rownames_to_column function)
+library(lubridate)     # Date/time manipulation
+library(knitr)         # Document generation
+library(usethis)       # Project setup utilities
+
+# Development and workflow
+library(datapasta)     # Paste data into R
+library(xopen)         # Open files from R
+
+# Base R packages (usually auto-loaded but explicit for completeness)
+library(grid)          # Graphics grid system
+library(codetools)     # Code analysis tools
+
+# Suppress startup messages if desired (optional)
+suppressWarnings({
+  suppressPackageStartupMessages({
+    library(tidyverse)
+    library(janitor)
+    library(corrplot)
+  })
+})
+
+#=================#
+# i. Importing and Cleaning Tables for later table setup
+#=================#
+
+# Define file paths and corresponding object names
 file_info <- list(
   AL14SM2 = "data/raw/2014 County Health Rankings Alabama Data - v6.xls - Ranked Measure Data.csv",
   AL15SM2 = "data/raw/2015 County Health Rankings Alabama Data - v3.xls - Ranked Measure Data.csv",
@@ -36,13 +84,13 @@ file_info <- list(
 clean_al_data <- function(file_path, data_name) {
   cat(paste("Processing", data_name, "...\n"))
   
-  
+  # Read the CSV file
   data <- read.csv(file_path)
   
   # Extract row 1 as column names and clean them
   new_col_names <- data[1, ] %>% 
     as.character() %>% 
-    make_clean_names()
+    make_clean_names()  # This removes spaces, special chars, makes lowercase
   
   # Set the cleaned names as column names
   colnames(data) <- new_col_names
@@ -55,14 +103,13 @@ clean_al_data <- function(file_path, data_name) {
   return(data)
 }
 
-# Create individual cleaned datasets
 cat("\n=== CREATING INDIVIDUAL OBJECTS ===\n")
 for (name in names(file_info)) {
   assign(name, clean_al_data(file_info[[name]], name), envir = .GlobalEnv)
   cat(paste("Created object:", name, "\n"))
 }
 
-# Add State Total labels
+# Add State Total to each dataset
 AL14SM2[1, 3] <- "State Total"
 AL15SM2[1, 3] <- "State Total"
 AL16SM2[1, 4] <- "State Total"
@@ -73,8 +120,9 @@ AL20SM2[1, 4] <- "State Total"
 AL21SM2[1, 3] <- "State Total"
 AL22SM2[1, 4] <- "State Total"
 AL23SM2[1, 3] <- "State Total"
+# AL24SM2 is skipped 
 
-# Add year columns
+# Define dataset names and their corresponding years
 dataset_years <- list(
   AL14SM2 = 2014, AL15SM2 = 2015, AL16SM2 = 2016, AL17SM2 = 2017, AL18SM2 = 2018,
   AL19SM2 = 2019, AL20SM2 = 2020, AL21SM2 = 2021, AL22SM2 = 2022, AL23SM2 = 2023, AL24SM2 = 2024
@@ -113,7 +161,35 @@ for (dataset_name in names(dataset_years)) {
   }
 }
 
-# Save cleaned individual datasets
+cat("\n=== VERIFICATION ===\n")
+
+# Verify that all datasets now have year columns
+verify_year_columns <- function() {
+  for (dataset_name in names(dataset_years)) {
+    if (exists(dataset_name)) {
+      data <- get(dataset_name)
+      expected_year <- dataset_years[[dataset_name]]
+      
+      if ("year" %in% names(data)) {
+        actual_year <- unique(data$year)[1]
+        if (actual_year == expected_year) {
+          cat(paste("✅", dataset_name, "- Year column present and correct:", actual_year, "\n"))
+        } else {
+          cat(paste("⚠️ ", dataset_name, "- Year column present but incorrect. Expected:", expected_year, "Found:", actual_year, "\n"))
+        }
+      } else {
+        cat(paste("❌", dataset_name, "- Year column missing\n"))
+      }
+    }
+  }
+}
+
+verify_year_columns()
+
+print(names(AL14SM2)) ## oldest and sparsest tables
+print(names(AL24SM2)) ##most recent and comprehensive table
+
+# Save cleaned datasets for next step
 cat("=== SAVING CLEANED DATASETS ===\n")
 for (name in names(file_info)) {
   if (exists(name)) {
