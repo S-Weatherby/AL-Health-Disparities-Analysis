@@ -5,7 +5,6 @@ Comprehensive longitudinal analysis examining racial health disparities across a
 
 ## Key Findings
 - **Statistically significant worsening** of racial disparities over the decade (p < 0.01)
-- **2-3x worse disparities** in rural counties compared to urban areas
 - **Strengthening correlation** between poverty and health outcomes over time
 
 ## Technical Highlights
